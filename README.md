@@ -1,3 +1,6 @@
+## This fork of jive5ab
+
+I am attempting to take the net2mem functionality out of jive5ab so that net2mem can go into another program. Also attempting to strip out all data formats except for VDIF. The new code is in vdif_net. Some code has been substantially modified: getsok, net2mem, runtime, udpsreader, netreader, threadfns. Other code must be included to get it running.
 
 ## jive5ab 
 
@@ -97,7 +100,7 @@ Non-tabular explanation of `cmake` command-line options, preformatted ASCII
         * CMAKE_BUILD_TYPE=<Type>
         Substitute 'Release' or 'Debug' for <Type> (without quotes).
         Default: Release
-
+    
     StreamStor:
         * Default search path: /usr /usr/local/src/streamstor /home/streamstor/Sdk
           Override with:
@@ -105,18 +108,18 @@ Non-tabular explanation of `cmake` command-line options, preformatted ASCII
           or
               SSAPI_ROOT=nossapi
           if no streamstor present or required
-
+    
         * WDAPIVER=XXXX
           request linking agains specific libwdapiXXXX. Default is to let
           the code figure it out by itself.
-    
+
 
     Install location:
         CMAKE_INSTALL_PREFIX=/path/to/install
         jive5ab will end up as
             ${CMAKE_INSTALL_PREFIX}/bin/jive5ab-${VERSION}-[32|64]bit-${BUILD_TYPE}[-FiLa10G]
         depending on how the build was configured
-
+    
     Force 32-bit build:
         Call cmake as follows:
         $> CFLAGS=-m32 CXXFLAGS=-m32 cmake -DCMAKE_ASM_FLAGS=-m32 [options] /path/to/src/jive5ab
