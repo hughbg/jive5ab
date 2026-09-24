@@ -1,0 +1,37 @@
+
+
+full() {
+    cd /home/$USER/jive5ab/build/src && /usr/bin/c++ -DB2B=64 -DMARK5C=1 -DNOSSAPI -D_FILE_OFFSET_BITS=64 -D_POSIX_PTHREAD_SEMANTICS -D_REENTRANT -D__STDC_FORMAT_MACROS -I/home/$USER/jive5ab/src -I/home/$USER/jive5ab/src/nossapi -I/home/$USER/jive5ab -I/home/$USER/jive5ab/libudt5ab -Wno-long-long -Wno-unused-function -O2  -fPIE -pthread -Wall -W -Werror -Wextra -pedantic -Wcast-qual -Wwrite-strings -Wredundant-decls -Wfloat-equal -Wshadow -ansi -MD -MT src/CMakeFiles/jive5ab.dir/threadfns/udpsreader.cc.o -MF CMakeFiles/jive5ab.dir/threadfns/udpsreader.cc.o.d -o CMakeFiles/jive5ab.dir/threadfns/udpsreader.cc.o -c /home/$USER/jive5ab/src/threadfns/udpsreader.cc
+}
+
+#files="ioboard.cc regular_expression.cc highrestime.cc mutex_locker.cc dosyscall.cc headersearch.cc threadutil.cc hex.cc runtime.cc errorqueue.cc evlbidebug.cc constraints.cc chainstats.cc blockpool.cc bin.cc threadfns/udpsreader.cc block.cc chain.cc"
+
+files="mk5command/net2mem.cc runtime.cc threadfns.cc threadfns/udpsreader.cc netparms.cc chainstats.cc transfermode.cc interchain.cc interchainfns.cc block.cc chain.cc getsok.cc mutex_locker.cc threadutil.cc dosyscall.cc hex.cc bin.cc blockpool.cc evlbidebug.cc sciprint.cc"
+
+diffit() {
+    for f in $files
+    do
+        echo $f --------
+        diff -q $f ../src/$f
+        diff -q ${f%.*}.h ../src/${f%.*}.h
+    done
+    exit
+}
+
+obj=""
+for f in $files
+do 
+    echo $f 
+    obj="$obj ${f%.*}.o"
+    g++ -c -DB2B=64 -DMARK5C=1 -DNOSSAPI -D_FILE_OFFSET_BITS=64 -D_POSIX_PTHREAD_SEMANTICS -D_REENTRANT -D__STDC_FORMAT_MACROS -I/home/$USER/jive5ab/vdif_net -I/home/$USER/jive5ab/boost $f
+
+    # includes list
+    g++ -E -DB2B=64 -DMARK5C=1 -DNOSSAPI -D_FILE_OFFSET_BITS=64 -D_POSIX_PTHREAD_SEMANTICS -D_REENTRANT -D__STDC_FORMAT_MACROS -I/home/$USER/jive5ab/vdif_net -I/home/$USER/jive5ab/boost $f | python parse_includes.py | sort | uniq > $f.d
+done
+
+mv udpsreader.o threadfns
+mv net2mem.o mk5command
+
+main=vdif_net.cc
+
+g++ $main $obj
