@@ -1,4 +1,5 @@
-// Copyright (C) 2007-2013 Harro Verkouter
+// available thread-functions
+// Copyright (C) 2007-2008 Harro Verkouter
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -16,32 +17,10 @@
 //          Joint Institute for VLBI in Europe
 //          P.O. Box 2
 //          7990 AA Dwingeloo
+#ifndef JIVE5A_NETREADEREXCEPTION_H
+#define JIVE5A_NETREADEREXCEPTION_H
+#include <ezexcept.h>
 
-#include <cstdio>
-#include <threadfns/netreader.h>
-#include <interchainfns.h>
-#include <transfermode.h>
+DECLARE_EZEXCEPT(netreaderexception)
 
-
-void net2mem_fn(runtime& rte ) {
-    const transfer_type rtm( string2transfermode("net2mem") );
-
-    std::cout << "net2mem open" << std::endl;
-
-    chain c;
-
-    std::cout << "net2mem chaining netreader" << std::endl;
-    c.register_cancel( c.add(&netreader<block>, 10, &net_server, networkargs(&rte)),
-                        &close_filedescriptor);
-    // And write to mem
-    c.add( queue_writer, queue_writer_args(&rte) );
-
-    // reset statistics counters
-    rte.statistics.clear();
-    rte.transfersubmode.clr_all();
-
-    rte.transfermode = rtm;
-    rte.processingchain = c;
-    rte.processingchain.run();
-
-}
+#endif

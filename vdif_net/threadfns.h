@@ -19,69 +19,33 @@
 //          7990 AA Dwingeloo
 #ifndef JIVE5A_THREADFNS_H
 #define JIVE5A_THREADFNS_H
-#include <set>
 #include <runtime.h>
-#include <blockpool.h>
-#include <netparms.h>
-#include <pthread.h>
 
-DECLARE_EZEXCEPT(netreaderexception)
-
-typedef std::set<pthread_t> threadset_type;
-struct fdreaderargs {
-    int             fd;
-    bool            doaccept;
+struct fakerargs {
     runtime*        rteptr;
-    pthread_t*      threadid;
-    unsigned int    blocksize;
-    netparms_type   netparms;
-    blockpool_type* pool;
-    off_t           start;
-    off_t           end;
-    bool            finished;
-    bool            run;
-    uint64_t        max_bytes_to_cache;
-    unsigned int    tag;
-    threadset_type  threads;
+    unsigned char*  buffer;
+    size_t          size;
+    size_t          framesize;
+    blockpool_type* framepool;
+    uint32_t        ref_time;
 
-    // allow the producer thread to produce variable sized blocks
-    // this allows eg disk2file to copy the complete file and not be rounded
-    // down to integer multiples of blocksize
-    bool            allow_variable_block_size;
+    void init_vdif_frame();
+    void update_vdif_frame(time_t);
+    void init_frame();
+    void update_frame(time_t);
 
-    fdreaderargs();
-    ~fdreaderargs();
+    fakerargs();
+    fakerargs(runtime* rte);
 
-    bool     flush( void );
-    off_t    get_start();
-    off_t    get_end();
-    void     set_start(off_t s);
-    void     set_end(off_t e);
-    bool     is_finished();
-    void     set_run(bool r);
-    void     set_bytes_to_cache(uint64_t b);
-    uint64_t get_bytes_to_cache();
-    void     set_variable_block_size( bool b );
-    off_t    get_file_size( void );
-
-    private:
-        fdreaderargs(fdreaderargs const&);
-        fdreaderargs const& operator=(fdreaderargs const&);
+    // calls delete [] on buffer.
+    ~fakerargs();
 };
 
-struct networkargs {
-    bool               allow_variable_block_size;
-    runtime*           rteptr;
-    unsigned int       streamID;
-    netparms_type      netparms;
+using namespace std;
 
-    networkargs();
-    networkargs(runtime* r, bool avbs=false, unsigned int stream=0);
-    networkargs(runtime* r, const netparms_type& np, bool avbs=false, unsigned int stream=0);
-};
+void faker(inq_type<block>*, outq_type<block>*, sync_type<fakerargs>*);
+void close_filedescriptor(runtime* fdreader);
 
-void close_filedescriptor(fdreaderargs* fdreader);
-
-fdreaderargs* net_server(networkargs net);
+runtime* net_server(runtime*);
 
 #endif

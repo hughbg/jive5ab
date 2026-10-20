@@ -45,12 +45,11 @@
 // Transparent support for pushing tagged items or not
 // - No tagged itmes used.
 template <typename Item>
-void netreader(outq_type<Item>* outq, sync_type<fdreaderargs>* args) {
+void netreader(outq_type<Item>* outq, sync_type<runtime>* args) {
     static const std::string myself( std::string("netreader<") + typeid(Item).name() + ">: " );
     // deal with generic networkstuff
     bool                   stop;
-    fdreaderargs*          network = args->userdata;
-    const std::string      proto = network->netparms.get_protocol();
+    runtime*               rteptr = args->userdata;
     scopedfd               acceptedfd( &::close );
 
     DEBUG(0, "netreader[" << ::pthread_self() << "]: starting" << std::endl);
@@ -65,12 +64,6 @@ void netreader(outq_type<Item>* outq, sync_type<fdreaderargs>* args) {
     // a deadlock. we no like.
     SYNCEXEC(args, stop = args->cancelled);
 
-    if ( proto != "udps") {
-        DEBUG(-1, "netserver: proto must be udps" << std::endl);
-        exit(1);
-    }
-
-
     if( stop ) {
         DEBUG(0, myself << "stop signalled before we actually started" << std::endl);
         return;
@@ -78,19 +71,19 @@ void netreader(outq_type<Item>* outq, sync_type<fdreaderargs>* args) {
 
 
     // update submode flags
-    RTEEXEC(*network->rteptr, 
-            network->rteptr->transfersubmode.clr( wait_flag ).set( connected_flag ));
+    RTEEXEC(*rteptr, 
+            rteptr->transfersubmode.clr( wait_flag ).set( connected_flag ));
 
     // and delegate to appropriate reader
     udpsreader(outq, args);
 
     // We're definitely not going to block on any fd anymore so make rly
     // sure we're not receiving signals no more
-    SYNCEXEC(args, delete network->threadid; network->threadid = 0; network->finished = true;);
+    SYNCEXEC(args, delete rteptr->threadid; rteptr->threadid = 0; rteptr->finished = true;);
 
     // update submode flags
-    RTEEXEC(*network->rteptr, 
-            network->rteptr->transfersubmode.clr( connected_flag ) );
+    RTEEXEC(*rteptr, 
+            rteptr->transfersubmode.clr( connected_flag ) );
 }
 
 #endif  // include guard

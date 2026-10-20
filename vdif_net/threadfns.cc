@@ -17,115 +17,138 @@
 //          Joint Institute for VLBI in Europe
 //          P.O. Box 2
 //          7990 AA Dwingeloo
-#include <iostream>
-#include <string>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
+
+
+
 #include <signal.h>
 
+
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <fcntl.h>
-#include <arpa/inet.h>
+
 #include <threadfns.h>
-#include <limits>
 #include <runtime.h>
-#include <threadutil.h>
 #include <getsok.h>
 #include <dosyscall.h>
 #include <evlbidebug.h>
+#include <timezooi.h>
+
 
 using namespace std;
 
+DECLARE_EZEXCEPT(netreaderexception)
 DEFINE_EZEXCEPT(netreaderexception)
 
-networkargs::networkargs() :
-    allow_variable_block_size( false ), rteptr( 0 ), streamID( 0 )
-{}
-networkargs::networkargs(runtime* r, bool avbs, unsigned int stream):
-    allow_variable_block_size( avbs ), rteptr( r ), streamID( stream )
-{ ASSERT_NZERO(rteptr); netparms = rteptr->netparms; }
-networkargs::networkargs(runtime* r, const netparms_type& np, bool avbs, unsigned int stream):
-    allow_variable_block_size( avbs ), rteptr( r ), streamID( stream ), netparms( np )
-{ ASSERT_NZERO(rteptr); }
+struct modal {
+    modal(int m) :
+        mode(m)
+    {}
+    int mode;
+};
 
-fdreaderargs::fdreaderargs():
-    fd( -1 ), doaccept( false ),
-    rteptr( 0 ), threadid( 0 ),
-    blocksize( 0 ), pool( 0 ),
-    start( 0 ), end( 0 ), finished( false ), run( false ),
-    max_bytes_to_cache( numeric_limits<uint64_t>::max() ),
-    tag( 0 ),
-    allow_variable_block_size( false )
-{}
-fdreaderargs::~fdreaderargs() {
-    delete pool;     pool = 0;
-    delete threadid; threadid = 0;
-    fd = -1;
+#define OPENKEES(s, i, flag) \
+    if( (i&flag)!=0 ) s << #flag << ",";
+
+ostream& operator<<(ostream& os, const modal& m) {
+    os << "<";
+    OPENKEES(os, m.mode, O_RDONLY);
+    OPENKEES(os, m.mode, O_WRONLY);
+    OPENKEES(os, m.mode, O_CREAT);
+    OPENKEES(os, m.mode, O_APPEND);
+    OPENKEES(os, m.mode, O_TRUNC);
+    OPENKEES(os, m.mode, O_RDWR);
+    OPENKEES(os, m.mode, O_EXCL);
+    os << ">";
+    return os;
 }
-bool fdreaderargs::flush( void ) {
-    int rv = 0;
-    if( fd>-1 && (rv=::fsync(fd))!=0 ) {
-        DEBUG(2, "fdreaderargs::flush/fsync() failed - " << evlbi5a::strerror(errno) << std::endl);
+
+string tolower( const string& s ) {
+    string                 retval;
+    string::const_iterator cptr;
+
+    for( cptr=s.begin(); cptr!=s.end(); cptr++ )
+        retval.push_back( (char)::tolower(*cptr) );
+    return retval;
+}
+
+
+// If the OS we're running on has O_LARGEFILE ... use that!
+#ifdef O_LARGEFILE
+    #define LARGEFILEFLAG  O_LARGEFILE
+#else
+    #define LARGEFILEFLAG  0
+#endif
+
+// <filename> should be
+//   [/]path/to/file.name,<mode>
+// where <mode> is
+//    "r"   => open file readonly
+//    "w"   => open file for writing, create it if necessary, truncate it
+//    "a"   => open file for appending, create it if necessary
+//    "n"   => create file for writing, fail if already exist
+// the file will be opened in binary 
+runtime *open_file(string filename, runtime* rteptr) {
+    int               flag = LARGEFILEFLAG; // smoke'm if you got'em
+    mode_t            mode = 0; // only used when creating
+    string            openmode;
+    string            actualfilename;
+    string::size_type openmodeptr;
+
+    openmodeptr = filename.find(",");
+    ASSERT2_COND( openmodeptr!=string::npos,
+                  SCINFO(" add ',<mode>' to the filename (r,w,a,n)") );
+
+    openmode       = tolower(filename.substr(openmodeptr+1));
+    actualfilename = filename.substr(0, openmodeptr);
+
+    ASSERT2_COND( filename.size()>0,
+                  SCINFO(" no actual filename given") );
+    ASSERT2_COND( openmode.size()>0,
+                  SCINFO(" no actual openmode (r,w,a) given") );
+    
+    if( openmode=="r" ) 
+        flag |= O_RDONLY;
+    else if( (openmode=="w") || (openmode=="n") ) {
+        // for n we check first that the file doesn't exists
+        if ( openmode == "n") {
+            flag |= O_EXCL;
+        }
+        // create the file if it don't exist
+        flag |= (O_WRONLY | O_CREAT | O_TRUNC);
+        // file rw for us, r for everyone else
+        mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH;
     }
-    return rv == 0;
-}
-
-off_t fdreaderargs::get_start() {
-    return start;
-}
-off_t fdreaderargs::get_end() {
-    return end;
-}
-off_t fdreaderargs::get_file_size( void ) {
-    off_t   rv = 0;
-    DEBUG(4, "get_file_size: fd=" << fd << endl);
-    if( fd>=0 ) {
-        const off_t  current = ::lseek(fd, 0, SEEK_CUR);
-        rv = ::lseek(fd, 0, SEEK_END);
-        DEBUG(4, "       current=" << current << " rv=" << rv << " " << ((rv<0) ? evlbi5a::strerror(errno) : "") << endl)
-        ::lseek(fd, current, SEEK_SET);
+    else if( openmode=="a" ) {
+        // create the file if it don't exist
+        flag |= (O_WRONLY | O_CREAT | O_APPEND);
+        // file rw for us, r for everyone else
+        mode = S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH;
+    } else {
+        ASSERT2_COND( false, SCINFO("invalid openmode '" << openmode << "'") );
     }
-    return rv;
-}
-void fdreaderargs::set_start(off_t s) {
-    start = s;
-}
-void fdreaderargs::set_end(off_t e) {
-    end = e;
-}
-bool fdreaderargs::is_finished() {
-    return finished;
-}
-void fdreaderargs::set_run(bool newval) {
-    run = newval;
-}
-uint64_t fdreaderargs::get_bytes_to_cache() {
-    return max_bytes_to_cache;
-}
-void fdreaderargs::set_bytes_to_cache(uint64_t b) {
-    max_bytes_to_cache = b;
-}
-void fdreaderargs::set_variable_block_size( bool b ) {
-    allow_variable_block_size = b;
+    ASSERT2_COND( (rteptr->fd=::open(actualfilename.c_str(), flag, mode))!=-1,
+                  SCINFO(actualfilename << ", flag=" << modal(flag) << ", mode=" << mode) );
+    // we must potentially change ownership - this has already
+    // been configured at startup such that we can blindly do this:
+    //ASSERT2_ZERO(mk6info_type::fchown_fn(rv->fd, mk6info_type::real_user_id, -1),
+    //             SCINFO("Failed to change ownership of new create file " << actualfilename));
+    DEBUG(0, "open_file: opened " << actualfilename << " as fd=" << rteptr->fd << endl);
+
+    return rteptr;
 }
 
-void close_filedescriptor(fdreaderargs* fdreader) {
+
+void close_filedescriptor(runtime* fdreader) {
     ASSERT_COND(fdreader);
-    const string proto   = fdreader->netparms.get_protocol();
     int (*close_fn)(int) = &::close;
 
-    if( proto!="udps" ) {
-        DEBUG(-1, "close_filedescriptor: proto must be udps" << endl);
-        exit(1);
-    }
-
-    if( fdreader->fd!=-1 ) {
+     if( fdreader->fd!=-1 ) {
         // This used to be an "ASSERT()" but then if we fail to close, the
         // ->fd member doesn't get set to '-1' so this keeps repeating
         // if "close_filedescriptor()" is called > once
         if( close_fn(fdreader->fd)!=0 ) {
-            DEBUG(-1, "Failed to close fd#" << fdreader->fd << " (" << proto << ") - if UDT, may already be closed" << endl);
+            DEBUG(-1, "close_filedescriptor: Failed to close fd#" << fdreader->fd << endl);
         } else {
             DEBUG(3, "close_filedescriptor: closed fd#" << fdreader->fd << endl);
         }
@@ -156,36 +179,150 @@ void close_filedescriptor(fdreaderargs* fdreader) {
 }
 
 
+DECLARE_EZEXCEPT(fakerexception)
+DEFINE_EZEXCEPT(fakerexception)
+
+
+
+
+fakerargs::fakerargs():
+    rteptr( 0 ), buffer( 0 ), framepool( 0 ), size(0), framesize(0), ref_time(0)
+{}
+
+fakerargs::fakerargs(runtime* rte):
+    rteptr( rte ), buffer( 0 ), framepool( 0 ), size(0), framesize(0), ref_time(0)
+{ 
+  EZASSERT2(rteptr, fakerexception, EZINFO("Must have a non-null runtime pointer"));
+  rteptr->check_vdif_spec();
+}
+
+fakerargs::~fakerargs() {
+    delete [] buffer;
+    delete framepool;
+}
+
+void
+fakerargs::init_vdif_frame() {
+
+    uint32_t *frame32;
+    uint8_t ref_epoch;
+    uint8_t log2nchans;
+    struct tm tm;
+    time_t clock;
+    int i;
+    
+    framesize = rteptr->get_framesize();
+
+    size = rteptr->get_blocksize();
+    buffer = new unsigned char[size];
+    frame32 = (uint32_t *)buffer;
+
+    time(&clock);
+    gmtime_r(&clock, &tm);
+    tm.tm_mon = (tm.tm_mon < 6 ? 0 : 6);
+    tm.tm_mday = 1;
+    tm.tm_hour = 0;
+    tm.tm_min = 0;
+    tm.tm_sec = 0;
+
+    ref_epoch = (tm.tm_year - 100) * 2 + tm.tm_mon / 6;
+    ref_time = ::my_timegm(&tm);
+
+    // complex data have half the number of channels. Don't allow complex.
+    log2nchans = ((ffs(rteptr->get_nchannel()) - 1) & 0x1f);
+
+    for (i = 0; i < 16; i++) {
+      frame32[i * (framesize / 4) + 0] = 0x80000000;
+      frame32[i * (framesize / 4) + 1] = (ref_epoch << 24) | i;
+      frame32[i * (framesize / 4) + 2] = (log2nchans << 24) | (framesize / 8);
+      frame32[i * (framesize / 4) + 3] = (((rteptr->get_bits_per_sample()-1) & 0x1f) << 26);
+    }
+}
+
+void
+fakerargs::update_vdif_frame(time_t clock)
+{
+    uint32_t *frame32 = (uint32_t *)buffer;
+    int i;
+
+    for (i = 0; i < 16; i++) {
+      frame32[i * (framesize / 4) + 0] &= ~0x3fffffff;
+      frame32[i * (framesize / 4) + 0] |= ((clock - ref_time) & 0x3fffffff);
+    }
+}
+
+void fakerargs::init_frame()
+{
+
+    init_vdif_frame();
+}
+
+void fakerargs::update_frame(time_t clock)
+{
+
+    update_vdif_frame(clock);
+}
+
+
+void faker(inq_type<block>* inq, outq_type<block>* outq, sync_type<fakerargs>* args)
+{
+    runtime* rteptr;
+    fakerargs* fakeargs = args->userdata;
+    struct timespec tv;
+    pop_result_type ret;
+    int ntimeouts = 0;
+    time_t clock = 0;
+
+    // Assert we do have a runtime pointer!
+    ASSERT2_COND(rteptr = fakeargs->rteptr, SCINFO("OH NOES! No runtime pointer!"));
+
+    // Do the initializing of the fakerargs with the lock held
+    SYNCEXEC(args,
+             fakeargs->init_frame();
+             if( fakeargs->framepool==0 )
+                fakeargs->framepool = new blockpool_type(fakeargs->size, 4));
+
+    while( true ) {
+        block b;
+#if !defined(__APPLE__)
+        ::clock_gettime(CLOCK_REALTIME, &tv);
+#else
+        struct timeval  osx_doesnt_fucking_have_clockgettime_fucking_retards;
+        ::gettimeofday(&osx_doesnt_fucking_have_clockgettime_fucking_retards, 0);
+        tv.tv_sec  = osx_doesnt_fucking_have_clockgettime_fucking_retards.tv_sec;
+        tv.tv_nsec = osx_doesnt_fucking_have_clockgettime_fucking_retards.tv_usec*1000;
+#endif
+        tv.tv_sec += 1;
+        ret = inq->pop(b, tv);
+        if (ret == pop_disabled)
+            break;
+        if (ret == pop_timeout) {
+            if (ntimeouts++ > 1) {
+                fakeargs->update_frame(clock);
+                // get a fresh block from the fakeframepool - so as not to
+                // mess up refcounting
+                b = fakeargs->framepool->get();
+                // and copy over the prepared framedata
+                ::memcpy(b.iov_base, fakeargs->buffer, b.iov_len);
+                clock = ::time(NULL);
+            } else {
+                clock = ::time(NULL);
+                continue;
+            }
+        } else {
+            ntimeouts = 0;
+        }
+
+    	if( outq->push(b)==false )
+            break;
+    }
+}
+
 
 // create a networkserver from the settings
-// in "networkargs.(runtime_short*)->netparms_type"
-// if protocol==rtcp (reverse tcp) it will be an
-// outgoing connection.
-fdreaderargs* net_server(networkargs net) {
-    // get access to the actual network parameters
-    const netparms_type&  np = net.netparms;
-    const string          proto = np.get_protocol();
-    unsigned int          olen( sizeof(np.sndbufsize) );
-    // we're supposed to deliver a fresh instance of one of these
-    fdreaderargs*         rv = new fdreaderargs();
+runtime* net_server(runtime *rteptr) {
+    RTEEXEC(*rteptr, rteptr->port>1024);
+    rteptr->fd = getsok(rteptr->port, "udps", "");
 
-    if ( proto != "udps") {
-        DEBUG(-1, "netserver: proto must be udps" << endl);
-        exit(1);
-    }
-
-    // copy over the runtime_short pointer
-    rv->rteptr    = net.rteptr;
-    rv->blocksize = np.get_blocksize();
-    rv->netparms  = np;
-
-    // copy over the variable block size allowingness
-    rv->allow_variable_block_size = net.allow_variable_block_size;
-    
-
-
-    rv->fd = getsok(np.get_port(), proto, np.get_host());
-
-
-    return rv;
+    return rteptr;
 }

@@ -1,68 +1,24 @@
-#include <cassert>
+
 #include <runtime.h>
 
 
-#define UNCONSTRAINED ((unsigned int)-1)
-
-#define GETCONSTRAINT(x) x
-#define ISSET(x) x != UNCONSTRAINED
-#define ASSERT(x) assert(x)
-
 runtime::runtime():
-    rd_size(UNCONSTRAINED), blocksize(UNCONSTRAINED), port(UNCONSTRAINED), host(""),
-    interchain_source_queue( NULL ), transfermode( no_transfer ), transfersubmode( transfer_submode() )
+    framesize_(0), blocksize_(0), nchannel_(0), bits_per_sample_(0), nblock(0), port(0), host(""),
+    interchain_source_queue( NULL ), threadid(NULL), fd(-1), transfermode( no_transfer ), transfersubmode( transfer_submode() ),
+    finished( false ), pool( NULL), ackPeriod(10), max_bytes_to_cache(256*1024*1024),
+    framesize_is_set(false), blocksize_is_set(false), nchannel_is_set(false), bits_per_sample_is_set(false)
 {
     PTHREAD_CALL( ::pthread_mutex_init(&rte_mutex, 0) );
 
 }
 
-void runtime::validate( void ) const {
-    // those MUST have values
-    ASSERT( ISSET(blocksize) );
-    ASSERT( ISSET(rd_size) );
-    ASSERT( ISSET(port) );
-
-    // these may not be 0
-    ASSERT( GETCONSTRAINT(blocksize)>0 );
-    ASSERT( GETCONSTRAINT(rd_size)>0 );
-    ASSERT( GETCONSTRAINT(rd_size)>=49152);
-
-    // these must be a multple of 8
-    ASSERT( (GETCONSTRAINT(blocksize)%8)==0 );
-    //ASSERT( (GETCONSTRAINT(rd_size)%8)==0 );
-
-    // blocksize must be an integral multiple of readsize (including the
-    // multiple "1").
-    ASSERT( GETCONSTRAINT(blocksize)>=GETCONSTRAINT(rd_size) );
-    ASSERT( (GETCONSTRAINT(blocksize)%GETCONSTRAINT(rd_size))==0 );
-
-    ASSERT( GETCONSTRAINT(interchain_source_queue)!=NULL );
-
-    ASSERT( GETCONSTRAINT(transfermode)!=no_transfer );
-    //ASSERT( GETCONSTRAINT(transfersubmode)!=no_transfer );
-
-    // framesize constrained? in that case frame/block should be integral
-    // multiples! we do not care which one is the bigger one either way of
-    // being a multiple is good enough for us
-    if( ISSET(framesize) ) {
-        // if framesize set it better be non-zero and a multiple of 8
-        ASSERT( GETCONSTRAINT(framesize)>0 );
-        ASSERT( (GETCONSTRAINT(framesize)%8)==0 );
-        // Uncompressed readsize divides an integral amount
-        // of times into the framesize
-        ASSERT( (GETCONSTRAINT(framesize)%GETCONSTRAINT(rd_size))==0 );
-// After discussion between BobE and HarroV it seems
-// that the following constraints serve no purpose.
-// For now we relax them.
-#if 0
-        if( GETCONSTRAINT(framesize)>GETCONSTRAINT(blocksize) ) {
-            ASSERT( (GETCONSTRAINT(framesize)%GETCONSTRAINT(blocksize))==0 );
-        } else {
-            ASSERT( (GETCONSTRAINT(blocksize)%GETCONSTRAINT(framesize))==0 );
-        }
-#endif
-    }
-    return;
+bool runtime::check_vdif_spec() {
+    assert(framesize_is_set);
+    assert(blocksize_is_set);
+    assert(nchannel_is_set);
+    assert(bits_per_sample_is_set);
+    
+    return true;
 }
 
 // scoped lock for the runtime

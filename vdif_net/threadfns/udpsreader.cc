@@ -19,10 +19,18 @@
 //          7990 AA Dwingeloo
 #include <threadfns/udpsreader.h>
 #include <circular_buffer.h>
+#include <netreaderexception.h>
 
+#include <assert.h>
 #include <list>
 #include <string>
 #include <sstream>
+#include <arpa/inet.h>
+#include <sys/types.h>          /* See NOTES */
+#include <sys/socket.h>
+#include <signal.h>
+
+
 /////////
 ///// Two-step UDPs reader. Makes sure that memory is touched only once
 ////  wether or not a packet is received or not
@@ -54,27 +62,27 @@
 
 
 // The bottom half
-void udpsreader_bh(outq_type<block>* outq, sync_type< sync_type<fdreaderargs> >* argsargs) {
+void udpsreader_bh(outq_type<block>* outq, sync_type< sync_type<runtime> >* argsargs) {
     int                       lastack, oldack;
     bool                      stop;
     ssize_t                   r;
     uint64_t                  seqnr, seqoff, pktidx;
     uint64_t                  firstseqnr  = 0;
     uint64_t                  expectseqnr = 0;
-    runtime*                  rteptr = 0;
+    runtime*                  rteptr = NULL;
     socklen_t                 slen( sizeof(struct sockaddr_in) );
     unsigned int              ack = 0;
-    fdreaderargs*             network = 0;
     struct sockaddr_in        sender;
-    sync_type<fdreaderargs>*  args = argsargs->userdata;
+    sync_type<runtime>*  args = argsargs->userdata;
     static std::string        acks[] = {"xhg", "xybbgmnx",
                                         "xyreryvwre", "tbqireqbzzr",
                                         "obxxryhy", "rvxryovwgre",
                                         "qebrsgbrgre", "" /* leave empty string last!*/};
     circular_buffer<uint64_t> psn( 32 ); // keep the last 32 sequence numbers
 
-    SYNCEXEC(args, network = args->userdata; rteptr = (network) ? network->rteptr : 0;);
-    EZASSERT2(network && rteptr, netreaderexception, EZINFO("at least one of the pointer arguments was NULL"));
+    SYNCEXEC(args, rteptr = args->userdata;);
+    EZASSERT2(rteptr, netreaderexception, EZINFO("runtime pointer argument was NULL"));
+    RTEEXEC(*rteptr, rteptr->check_vdif_spec() && rteptr->nblock>0 && rteptr->ackPeriod>0 && rteptr->fd!=-1);  //stuff we need
 
     // an (optionally compressed) block of <blocksize> is chopped up in
     // chunks of <read_size>, optionally compressed into <write_size> and
@@ -89,16 +97,16 @@ void udpsreader_bh(outq_type<block>* outq, sync_type< sync_type<fdreaderargs> >*
     //                change the readahead + blockpool allocation scheme
     //                because we might be doing vlbi_streamer style
     const unsigned int           sensible_blocksize( 32*1024*1024 );
-    const unsigned int           rd_size   = 1; //rteptr->sizes[constraints::write_size];
-    const unsigned int           wr_size   = 1; //rteptr->sizes[constraints::read_size];
-    const unsigned int           blocksize = 1; //rteptr->sizes[constraints::blocksize];
-
+    const unsigned int           rd_size   = rteptr->get_framesize();
+    const unsigned int           wr_size   = rd_size; 
+    const unsigned int           blocksize = rteptr->get_blocksize(); 
+    
     // HV: 13-11-2013 Support for vlbi streamer mode means that blocksize
     //                could be 256MB - 512MB / block. In such cases the
     //                readahead should be 1.
     //                Below we should take care of the blockpool allocation
     //                too - cannot ask for 16 blocks at a time :D
-    const unsigned int           readahead = (blocksize>=sensible_blocksize)?2:network->netparms.nblock;
+    const unsigned int           readahead = (blocksize>=sensible_blocksize)?2:rteptr->nblock;
 
     // We tag the flags at the end of the block, one unsigned char/datagram
     unsigned char                dummyflag;
@@ -127,19 +135,19 @@ void udpsreader_bh(outq_type<block>* outq, sync_type< sync_type<fdreaderargs> >*
     //                 for the thread one desires to be woken up should it be
     //                 signalled!
     install_zig_for_this_thread(SIGUSR1);
-    SYNCEXEC(args,
-             delete network->threadid;
-             delete network->pool;
-             network->threadid = new pthread_t( ::pthread_self() );
-             network->pool = new blockpool_type(blocksize + n_dg_p_block*sizeof(unsigned char), nb));
+    RTEEXEC(*rteptr,
+             if (rteptr->threadid!=NULL) delete rteptr->threadid;
+             if (rteptr->pool!=NULL) delete rteptr->pool;
+             rteptr->threadid = new pthread_t( ::pthread_self() );
+             rteptr->pool = new blockpool_type(blocksize + n_dg_p_block*sizeof(unsigned char), nb));
 
     // If blocksize > sensible block size start to pre-allocate!
     if( blocksize>=sensible_blocksize ) {
         std::list<block>        bl;
-        const unsigned int npre = network->netparms.nblock;
+        const unsigned int npre = rteptr->nblock;
         DEBUG(4, "udpsreader_bh: start pre-allocating " << npre << " blocks" << std::endl);
         for(unsigned int i=0; i<npre; i++)
-            bl.push_back( network->pool->get() );
+            bl.push_back( rteptr->pool->get() );
         DEBUG(4, "udpsreader_bh: ok, done that!" << std::endl);
     }
 
@@ -191,16 +199,15 @@ void udpsreader_bh(outq_type<block>* outq, sync_type< sync_type<fdreaderargs> >*
     if( stop ) {
         delete [] dummybuf;
         delete [] workbuf;
-        SYNCEXEC(args, delete network->threadid; network->threadid = 0);
+        RTEEXEC(*rteptr, delete rteptr->threadid; rteptr->threadid = 0);
         DEBUG(0, "udpsreader_bh: cancelled before actual start" << std::endl);
         return;
     }
 
     // No, we weren't. Now go into our mainloop!
-    DEBUG(0, "udpsreader_bh: fd=" << network->fd << " data:" << iov[1].iov_len
+    DEBUG(0, "udpsreader_bh: fd=" << rteptr->fd << " data:" << iov[1].iov_len
             << " total:" << waitallread << " readahead:" << readahead
             << " pkts:" << n_dg_p_block * readahead
-            << " avbs: " << network->allow_variable_block_size
             << std::endl);
 
     // create references to the statisticscounters -
@@ -231,7 +238,6 @@ void udpsreader_bh(outq_type<block>* outq, sync_type< sync_type<fdreaderargs> >*
     uint64_t       blockidx;
     uint64_t       maxseq, minseq;
     unsigned int   shiftcount;
-    netparms_type& np( network->rteptr->netparms );
 
     // Our loop can be much cleaner if we wait here to receive the 
     // very first sequencenumber. We make that our current
@@ -255,10 +261,10 @@ DEBUG(-1,"udpsreader_bh: n_read=" << n_read << std::endl);
 #endif
 #if 1
     ssize_t nrec;
-    if( (nrec=::recvfrom(network->fd, &seqnr, sizeof(seqnr), MSG_PEEK|MSG_WAITALL, (struct sockaddr*)&sender, &slen))!=sizeof(seqnr) ) {
+    if( (nrec=::recvfrom(rteptr->fd, &seqnr, sizeof(seqnr), MSG_PEEK|MSG_WAITALL, (struct sockaddr*)&sender, &slen))!=sizeof(seqnr) ) {
         delete [] dummybuf;
         delete [] workbuf;
-        SYNCEXEC(args, delete network->threadid; network->threadid = 0);
+        RTEEXEC(*rteptr, delete rteptr->threadid; rteptr->threadid = 0);
         DEBUG(-1, "udpsreader_bh: cancelled waiting for first frame " << "nrec:" << nrec << " (ask:" << sizeof(seqnr) << ")" << std::endl);
         return;
     }
@@ -395,7 +401,7 @@ seqnr = (uint64_t)(*((uint32_t*)(((unsigned char*)iov[0].iov_base)+4)));
                 // ok we know in which block to put our datagram
                 // make sure the block is non-empty
                 if( workbuf[blockidx].empty() ) {
-                    workbuf[blockidx] = network->pool->get();
+                    workbuf[blockidx] = rteptr->pool->get();
                     // set all flags to 0 - no pkts in buffer yet
                     ::memset((unsigned char*)workbuf[blockidx].iov_base + blocksize, 0x0, n_dg_p_block);
                 }
@@ -436,7 +442,7 @@ seqnr = (uint64_t)(*((uint32_t*)(((unsigned char*)iov[0].iov_base)+4)));
         // Read the pakkit into our mem'ry space before we do anything else
         msg.msg_iovlen  = nwaitall;
         iov[1].iov_base = location;
-        if( (r=::recvmsg(network->fd, &msg, MSG_WAITALL))!=(ssize_t)waitallread ) {
+        if( (r=::recvmsg(rteptr->fd, &msg, MSG_WAITALL))!=(ssize_t)waitallread ) {
             lastsyserror_type  lse;
             std::ostringstream oss;
 
@@ -448,7 +454,8 @@ seqnr = (uint64_t)(*((uint32_t*)(((unsigned char*)iov[0].iov_base)+4)));
             for(uint64_t i=0, blockseqnstart=firstseqnr; i<readahead && blockseqnstart<=maxseq; i++, blockseqnstart+=n_dg_p_block) {
                 const unsigned int sz = wr_size * (unsigned int)std::min(maxseq + 1 - blockseqnstart, (uint64_t)n_dg_p_block);
 
-                if( sz==blocksize || network->allow_variable_block_size )
+                //if( sz==blocksize || rteptr->allow_variable_block_size )
+                assert(sz==blocksize);
                     if( (done=(outq->push(workbuf[i].sub(0, sz))==false))==true )
                         break;
             }
@@ -464,7 +471,7 @@ seqnr = (uint64_t)(*((uint32_t*)(((unsigned char*)iov[0].iov_base)+4)));
             //                acceptable. Cf:
             //                https://sourceware.org/bugzilla/show_bug.cgi?id=4509
             //                Un-fucking-believable.
-            SYNCEXEC(args, delete network->threadid; network->threadid = 0);
+            RTEEXEC(*rteptr, delete rteptr->threadid; rteptr->threadid = 0);
             // Fix 2. Do not throw on EINTR or EBADF; that is the normal way to
             //        terminate the reader and should not warrant an
             //        exception
@@ -476,7 +483,7 @@ seqnr = (uint64_t)(*((uint32_t*)(((unsigned char*)iov[0].iov_base)+4)));
             // wouldnae be necessary
             delete [] dummybuf;
             delete [] workbuf;
-            oss << "::recvmsg(network->fd, &msg, MSG_WAITALL) fails - [" << lse << "] (ask:" << waitallread << " got:" << r << ")";
+            oss << "::recvmsg(rteptr->fd, &msg, MSG_WAITALL) fails - [" << lse << "] (ask:" << waitallread << " got:" << r << ")";
             throw syscallexception(oss.str());
         }
 
@@ -487,18 +494,18 @@ seqnr = (uint64_t)(*((uint32_t*)(((unsigned char*)iov[0].iov_base)+4)));
 
         // Acknowledgement processing:
         // Send out an ack before we go into infinite wait
-        if( np.ackPeriod!=oldack ) {
+        if( rteptr->ackPeriod!=oldack ) {
             // someone set a different acknowledgement period
             // let's trigger immediate send + restart with current ACK period
             lastack = 0;
-            oldack  = np.ackPeriod;
+            oldack  = rteptr->ackPeriod;
             DEBUG(2, "udpsreader_bh: switch to ACK every " << oldack << "th packet" << std::endl);
         }
         if( lastack<=0 ) {
             if( acks[ack].empty() )
                 ack = 0;
             // Only warn if we fail to send. Try again in two minutes
-            if( ::sendto(network->fd, acks[ack].c_str(), acks[ack].size(), 0,
+            if( ::sendto(rteptr->fd, acks[ack].c_str(), acks[ack].size(), 0,
                          (const struct sockaddr*)&sender, sizeof(struct sockaddr_in))==-1 )
                 DEBUG(-1, "udpsreader_bh: WARN failed to send ACK back to sender" << std::endl);
             lastack = oldack;
@@ -511,7 +518,7 @@ seqnr = (uint64_t)(*((uint32_t*)(((unsigned char*)iov[0].iov_base)+4)));
         // Wait for another pakkit to come in. 
         // When it does, take a peak at the sequencenr
         msg.msg_iovlen = npeek;
-        if( (r=::recvmsg(network->fd, &msg, MSG_PEEK))!=peekread ) {
+        if( (r=::recvmsg(rteptr->fd, &msg, MSG_PEEK))!=peekread ) {
             lastsyserror_type  lse;
             std::ostringstream oss;
 
@@ -523,7 +530,8 @@ seqnr = (uint64_t)(*((uint32_t*)(((unsigned char*)iov[0].iov_base)+4)));
             for(uint64_t i=0, blockseqnstart=firstseqnr; i<readahead && blockseqnstart<=maxseq; i++, blockseqnstart+=n_dg_p_block) {
                 const unsigned int sz = wr_size * (unsigned int)std::min(maxseq + 1 - blockseqnstart, (uint64_t)n_dg_p_block);
 
-                if( sz==blocksize || network->allow_variable_block_size )
+                //if( sz==blocksize || network->allow_variable_block_size )
+                assert(sz==blocksize);
                     if( (done=(outq->push(workbuf[i].sub(0, sz))==false))==true )
                         break;
             }
@@ -538,7 +546,7 @@ seqnr = (uint64_t)(*((uint32_t*)(((unsigned char*)iov[0].iov_base)+4)));
             //                acceptable. Cf:
             //                https://sourceware.org/bugzilla/show_bug.cgi?id=4509
             //                Un-fucking-believable.
-            SYNCEXEC(args, delete network->threadid; network->threadid = 0);
+            RTEEXEC(*rteptr, delete rteptr->threadid; rteptr->threadid = 0);
             // Fix 2. Do not throw on EINTR or EBADF; that is the normal way to
             //        terminate the reader and should not warrant an
             //        exception
@@ -550,7 +558,7 @@ seqnr = (uint64_t)(*((uint32_t*)(((unsigned char*)iov[0].iov_base)+4)));
             // wouldnae be necessary
             delete [] dummybuf;
             delete [] workbuf;
-            oss << "::recvmsg(network->fd, &msg, MSG_PEEK) fails - [" << lse << "] (ask:" << peekread << " got:" << r << ")";;
+            oss << "::recvmsg(rteptr->fd, &msg, MSG_PEEK) fails - [" << lse << "] (ask:" << peekread << " got:" << r << ")";;
             throw syscallexception(oss.str());
         }
 #ifdef FILA
@@ -562,7 +570,7 @@ seqnr = (uint64_t)(*((uint32_t*)(((unsigned char*)iov[0].iov_base)+4)));
     // Clean up
     delete [] dummybuf;
     delete [] workbuf;
-    SYNCEXEC(args, delete network->threadid; network->threadid = 0);
+    RTEEXEC(*rteptr, delete rteptr->threadid; rteptr->threadid = 0);
     DEBUG(0, "udpsreader_bh: stopping" << std::endl);
 }
 
@@ -598,8 +606,8 @@ struct vdif_header {
 
 void udpsreader_th_nonzeroeing(inq_type<block>* inq, outq_type<block>* outq, sync_type<runtime*>* args) {
     runtime*           rteptr    = *(args->userdata);
-    const unsigned int wr_size   = rteptr->rd_size;
-    const unsigned int blocksize = rteptr->blocksize;
+    const unsigned int wr_size   = rteptr->get_framesize();
+    const unsigned int blocksize = rteptr->get_blocksize();
 
     // Cache ANYTHING that is known & constant.
     // If a value MUST be constant, then MAKE IT SO.

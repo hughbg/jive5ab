@@ -1,8 +1,31 @@
+// implementation of the functions
+// Copyright (C) 2007-2008 Harro Verkouter
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// any later version.
+// 
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY
+// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+// PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+// 
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+// 
+// Author:  Harro Verkouter - verkouter@jive.nl
+//          Joint Institute for VLBI in Europe
+//          P.O. Box 2
+//          7990 AA Dwingeloo
+
+#include <cstring>
 #include <unistd.h>
-#include <netdb.h>
-#include <string.h>
-#include <fcntl.h>
+#include <sys/types.h>          /* See NOTES */
+#include <sys/socket.h>
 #include <arpa/inet.h>
+#include <netdb.h>
+#include <fcntl.h>
+
 #include <getsok.h>
 #include <dosyscall.h>
 #include <evlbidebug.h>
@@ -123,7 +146,7 @@ int getsok(unsigned short port, const string& proto, const string& local) {
 // we don't get support for multicast apparently. Sigh.
 //#if defined(IN_MULITCAST)
         // Good. <ip> now contains the ipaddress specified in <local>
-		// If multicast detected, join the group and throw up if it fails.
+		// If multicast detected, join the group and throw up if it fails. 
 		if( IN_MULTICAST(ntohl(ip.s_addr)) ) {
 			// ok do the MC join
             unsigned char   newttl( 30 );
@@ -147,7 +170,7 @@ int getsok(unsigned short port, const string& proto, const string& local) {
                         &newttl, sizeof(newttl))!=0 ) {
                 DEBUG(-1, "getsok: WARN Failed to set MulticastTTL to "
                         << newttl << endl);
-                DEBUG(-1, "getsok: WARN Your data may or may not arrive, "
+                DEBUG(-1, "getsok: WARN Your data may or may not arrive, " 
                         << "depending on LAN or WAN" << endl);
             }
 		} else {

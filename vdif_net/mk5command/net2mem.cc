@@ -18,23 +18,35 @@
 //          7990 AA Dwingeloo
 
 #include <cstdio>
+#include <runtime.h>
 #include <threadfns/netreader.h>
+#include <threadfns.h>
 #include <interchainfns.h>
-#include <transfermode.h>
 
 
-void net2mem_fn(runtime& rte ) {
+void net2mem_fn(runtime& rte) {
     const transfer_type rtm( string2transfermode("net2mem") );
 
     std::cout << "net2mem open" << std::endl;
 
     chain c;
 
+    /*
+     * netserver does no chaining, it opens a socket and returns fdreaderargs. close_filedescriptor takes fdreaderargs.
+     * netreader creates and runs a chain that does the socket reading and it waits for the chain to finish.
+     * */
     std::cout << "net2mem chaining netreader" << std::endl;
-    c.register_cancel( c.add(&netreader<block>, 10, &net_server, networkargs(&rte)),
+    c.register_cancel( c.add(&netreader<block>, 10, &net_server, &rte),
                         &close_filedescriptor);
+
+    c.add(&faker, 10, fakerargs(&rte));
+
+    // queue_writer writes to an interchain queue
     // And write to mem
     c.add( queue_writer, queue_writer_args(&rte) );
+
+    //c.add(&fdwriter<block>,  &open_file, filename + "," + mode, &rte );
+
 
     // reset statistics counters
     rte.statistics.clear();

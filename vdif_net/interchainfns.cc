@@ -68,8 +68,8 @@ void queue_writer(inq_type<block>* inq, sync_type<queue_writer_args>* args) {
     queue_writer_args* qwargs = args->userdata;
     runtime* rteptr = qwargs->rteptr;
 
-    RTEEXEC(*rteptr, rteptr->validate());
-    const unsigned int blocksize = rteptr->blocksize;
+    RTEEXEC(*rteptr, rteptr->check_vdif_spec());
+    const unsigned int blocksize = rteptr->get_blocksize();
     // Request a counter for counting into
     RTEEXEC(*rteptr,
             rteptr->statistics.init(args->stepid, "MemWriter", 0));
@@ -85,6 +85,7 @@ void queue_writer(inq_type<block>* inq, sync_type<queue_writer_args>* args) {
     DEBUG(0, "queue_writer: starting" << endl);
     do {
         block b;
+
         if ( !inq->pop(b) ) {
             break;
         }
@@ -92,6 +93,7 @@ void queue_writer(inq_type<block>* inq, sync_type<queue_writer_args>* args) {
         interchain_queues_try_push(b);
     } while(true);
     DEBUG(0, "queue_writer: stopping" << endl);
+
 }
 
 void queue_reader(outq_type<block>* outq, sync_type<queue_reader_args>* args) {
@@ -104,8 +106,8 @@ void queue_reader(outq_type<block>* outq, sync_type<queue_reader_args>* args) {
     queue_reader_args* qargs = args->userdata;
     runtime* rteptr = qargs->rteptr;
     
-    RTEEXEC(*rteptr, rteptr->validate());
-    const unsigned int out_blocksize = rteptr->blocksize;
+    RTEEXEC(*rteptr, rteptr->check_vdif_spec());
+    const unsigned int out_blocksize = rteptr->get_blocksize();
     ASSERT_COND(out_blocksize > 0);
 
     SYNCEXEC(args, qargs->pool = new blockpool_type(out_blocksize, 16));
@@ -315,8 +317,8 @@ void queue_forker(inq_type<block>* inq, outq_type<block>* outq, sync_type<queue_
             rteptr->statistics.init(args->stepid, "Forker", 0));
     counter_type& counter( rteptr->statistics.counter(args->stepid) );
 
-    RTEEXEC(*rteptr, rteptr->validate());
-    const unsigned int blocksize = rteptr->blocksize;
+    RTEEXEC(*rteptr, rteptr->check_vdif_spec());
+    const unsigned int blocksize = rteptr->get_blocksize();
 
     // enable the queue between the chains, remember to disable it when done
     // note: we must have at least 1 entry! (With the advent of FlexBuff,
