@@ -5944,6 +5944,8 @@ fdreaderargs* net_server(networkargs net) {
     // we're supposed to deliver a fresh instance of one of these
     fdreaderargs*         rv = new fdreaderargs();
 
+    net.print("in net_server");
+
     // copy over the runtime pointer
     rv->rteptr    = net.rteptr;
     rv->doaccept  = (proto=="tcp" || proto=="unix" || proto=="udt" || proto == "itcp");
@@ -6391,13 +6393,32 @@ reorderargs::~reorderargs() {
 
 networkargs::networkargs() :
     allow_variable_block_size( false ), rteptr( 0 ), streamID( 0 )
-{}
+{print("construct 1");}
 networkargs::networkargs(runtime* r, bool avbs, unsigned int stream):
     allow_variable_block_size( avbs ), rteptr( r ), streamID( stream )
-{ ASSERT_NZERO(rteptr); netparms = rteptr->netparms; }
+{ ASSERT_NZERO(rteptr); netparms = rteptr->netparms; print("construct 2"); }
 networkargs::networkargs(runtime* r, const netparms_type& np, bool avbs, unsigned int stream):
     allow_variable_block_size( avbs ), rteptr( r ), streamID( stream ), netparms( np )
-{ ASSERT_NZERO(rteptr); }
+{ ASSERT_NZERO(rteptr); print("construct 3"); }
+
+void networkargs::print(const char *what) {
+    std::cout << "networkargs " << what << " -------------------------\n";
+    std::cout << "allow_variable_block_size " << allow_variable_block_size << std::endl;
+    std::cout << "streamID " << streamID << std::endl;
+
+    std::cout << "networkargs.netparms --------\n";
+    std::cout << "rcvbufsize " << netparms.rcvbufsize << std::endl;
+    std::cout << "sndbufsize " << netparms.sndbufsize << std::endl;
+    std::cout << "interpacketdelay_ns " << netparms.interpacketdelay_ns << std::endl;
+    std::cout << "theoretical_ipd_ns " << netparms.theoretical_ipd_ns << std::endl;
+    std::cout << "ackPeriod " << netparms.ackPeriod << std::endl;
+    std::cout << "nblock " << netparms.nblock << std::endl;
+    std::cout << "protocol " << netparms.get_protocol() << std::endl;
+    std::cout << "mtu " << netparms.get_mtu() << std::endl;
+    std::cout << "blocksize " << netparms.get_blocksize() << std::endl;
+}
+
+
 
 fdreaderargs::fdreaderargs():
     fd( -1 ), doaccept( false ), 

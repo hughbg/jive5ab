@@ -392,6 +392,7 @@ struct networkargs {
     networkargs();
     networkargs(runtime* r, bool avbs=false, unsigned int stream=0);
     networkargs(runtime* r, const netparms_type& np, bool avbs=false, unsigned int stream=0);
+    void print(const char *what);
 };
 
 typedef std::set<pthread_t> threadset_type;

@@ -91,6 +91,8 @@ void udpsreader_bh(outq_type<block>* outq, sync_type< sync_type<fdreaderargs> >*
     const unsigned int           rd_size   = rteptr->sizes[constraints::write_size];
     const unsigned int           wr_size   = rteptr->sizes[constraints::read_size];
     const unsigned int           blocksize = rteptr->sizes[constraints::blocksize];
+    
+    DEBUG(-1, rd_size << " " << blocksize << std::endl);
 
     // HV: 13-11-2013 Support for vlbi streamer mode means that blocksize
     //                could be 256MB - 512MB / block. In such cases the

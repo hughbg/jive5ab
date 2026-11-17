@@ -3,10 +3,10 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include <runtime.h>
+
 #include <vdif_queue_reader.h>
 
-extern void net2mem_fn(runtime& rte );
+
 void rawdump(const char *fname, const unsigned char *p, unsigned count);
 
 static runtime rte;
@@ -15,36 +15,30 @@ static runtime rte;
 
 int main() {
 
-    VDIFQueueReader vdif;    // establishes queue before anything is run
-
-    rte.set_framesize(8032);
-    rte.set_bits_per_sample(4);
-    rte.set_nchannel(1);
-    rte.set_blocksize(16*rte.get_framesize());
-    rte.nblock = 8;
-
-    // Set up reading chain
-    net2mem_fn(rte);
-
-    sleep(3);
+    VDIFQueueReader vdif(8032, 4, 1, 22001);   
 
 
+    // VDIFQueueReader will have requested an interchain queue
+    // and set it to enable pop and started running.
 
-    // Read from memory
-    iovec_result vdif_block;
-    while ( (vdif_block=vdif.read_block()).first == NULL )
-        sleep(1);
 
     int fd;
-    if ( (fd = creat("vdif_block.dat", S_IRUSR|S_IWUSR)) == -1 ) {
-        std::cout << "Failed" << std::endl;
+    if ( (fd = creat("jive5ab_chain_out.vdif", S_IRUSR|S_IWUSR)) == -1 ) {
+        std::cout << "Failed to jive5ab_chain_out.vdif" << std::endl;
         return 1;
     }
+    
+    while ( true ) {
+        unsigned char *frame = vdif.read_frame();
 
-    if ( writev(fd, vdif_block.first, vdif_block.second)!=(ssize_t)rte.get_blocksize() ) {
-        std::cout << "Failed" << std::endl;
-        return 1;
+        //std::cout << "frame write, block ptr " << (uint64_t)vdif.get_block_ptr() << " frame ptr " << (uint64_t)frame << "\n";
+        if ( write(fd, frame, vdif.get_frame_length()) != vdif.get_frame_length()) {
+            std::cout << "Failed block write" << std::endl;
+            return 1;
+        }
+
     }
+    
     close(fd);
 
     return 0;

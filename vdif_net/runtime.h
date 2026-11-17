@@ -17,7 +17,7 @@ class runtime {
 public:
     // these were in netparms_type
     unsigned int port;    // network port
-    unsigned int nblock;    // not sure what this is for apart from general buffer or spool space. e.g. 8
+    unsigned int nblock;    // The workbuf in uspsreader has this many blocks.
     int ackPeriod;
 
     chain                  processingchain;
