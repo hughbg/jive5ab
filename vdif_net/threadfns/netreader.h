@@ -70,10 +70,6 @@ void netreader(outq_type<Item>* outq, sync_type<runtime>* args) {
     }
 
 
-    // update submode flags
-    RTEEXEC(*rteptr, 
-            rteptr->transfersubmode.clr( wait_flag ).set( connected_flag ));
-
     // and delegate to appropriate reader
     udpsreader(outq, args);
 
@@ -81,9 +77,6 @@ void netreader(outq_type<Item>* outq, sync_type<runtime>* args) {
     // sure we're not receiving signals no more
     SYNCEXEC(args, delete rteptr->threadid; rteptr->threadid = 0; rteptr->finished = true;);
 
-    // update submode flags
-    RTEEXEC(*rteptr, 
-            rteptr->transfersubmode.clr( connected_flag ) );
 }
 
 #endif  // include guard

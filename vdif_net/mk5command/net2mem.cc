@@ -25,7 +25,6 @@
 
 
 void net2mem_fn(runtime& rte) {
-    const transfer_type rtm( string2transfermode("net2mem") );
 
     std::cout << "net2mem open" << std::endl;
 
@@ -48,11 +47,6 @@ void net2mem_fn(runtime& rte) {
     //c.add(&fdwriter<block>,  &open_file, filename + "," + mode, &rte );
 
 
-    // reset statistics counters
-    rte.statistics.clear();
-    rte.transfersubmode.clr_all();
-
-    rte.transfermode = rtm;
     rte.processingchain = c;
     rte.processingchain.run();
 

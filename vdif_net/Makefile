@@ -1,7 +1,7 @@
 # Keep checking what code files are actually needed as things change.
 
-OBJ = mk5command/net2mem.o runtime.o threadfns.o threadfns/udpsreader.o chainstats.o transfermode.o interchain.o interchainfns.o block.o chain.o getsok.o mutex_locker.o threadutil.o dosyscall.o hex.o bin.o blockpool.o evlbidebug.o sciprint.o timezooi.o blockdump.o vdif_queue_reader.o
-HEAD = threadfns.h tthreadfns.h bqueue.h hex.h transfermode.h blockpool.h chainstats.h evlbidebug.h netparms.h runtime.h circular_buffer.h errorqueue.h fptrhelper.h dosyscall.h netreaderexception.h pthreadcall.h getsok.h thunk.h ezexcept.h sciprint.h mutex_locker.h threadutil.h carrayutil.h bin.h threadfns/do_push_block.h threadfns/udpsreader.h threadfns/netreader.h counter.h nothrow.h interchainfns.h countedpointer.h block.h interchain.h chain.h vdif_queue_reader.h
+OBJ = mk5command/net2mem.o runtime.o threadfns.o threadfns/udpsreader.o interchain.o interchainfns.o block.o chain.o getsok.o mutex_locker.o threadutil.o dosyscall.o  blockpool.o evlbidebug.o timezooi.o vdif_queue_reader.o
+HEAD = block.h circular_buffer.h  ezexcept.h  interchain.h     nothrow.h threadutil.h blockpool.h  countedpointer.h   fptrhelper.h     mutex_locker.h   pthreadcall.h  thunk.h bqueue.h     dosyscall.h   getsok.h    netparms.h  runtime.h timezooi.h chain.h evlbidebug.h  interchainfns.h  netreaderexception.h  threadfns.h    vdif_queue_reader.h
 
 DEBUG = -g
 
@@ -19,4 +19,4 @@ libvdif_net.a:	$(OBJ) $(HEAD)
 	$(COMPILE) $< -o $@
 	
 clean:
-	rm `find -name "*.o"` `find -name "*.gch"` `find -name "*.d"` vdif_net
+	rm `find -name "*.o"` `find -name "*.gch"` `find -name "*.d"` vdif_net libvdif_net.a

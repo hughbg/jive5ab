@@ -4,7 +4,7 @@
 
 runtime::runtime():
     framesize_(0), blocksize_(0), nchannel_(0), bits_per_sample_(0), nblock(0), port(0), host(""),
-    interchain_source_queue( NULL ), threadid(NULL), fd(-1), transfermode( no_transfer ), transfersubmode( transfer_submode() ),
+    threadid(NULL), fd(-1),
     finished( false ), pool( NULL), ackPeriod(10), max_bytes_to_cache(256*1024*1024),
     framesize_is_set(false), blocksize_is_set(false), nchannel_is_set(false), bits_per_sample_is_set(false)
 {

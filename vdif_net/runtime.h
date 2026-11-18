@@ -3,8 +3,7 @@
 #include <pthread.h>
 #include <netparms.h>
 #include <set>
-#include <transfermode.h>
-#include <chainstats.h>
+#include <chain.h>
 #include <block.h>
 #include <blockpool.h>
 #include <bqueue.h>
@@ -26,11 +25,11 @@ public:
 
     // stats and transfermode are kept in to reduce changes to other code that uses them (interchains).
     // Probably can be removed otherwise.
-    chainstats_type        statistics;
+    //chainstats_type        statistics;
 
     // The global transfermode and submode/status
-    transfer_type          transfermode;
-    transfer_submode       transfersubmode;
+    //transfer_type          transfermode;
+    //transfer_submode       transfersubmode;
 
 
     // shared access between multiple threads.

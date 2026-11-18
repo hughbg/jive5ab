@@ -36,7 +36,6 @@
 #include <sstream>
 #include <string>
 #include <exception>
-#include <errorqueue.h>
 
 
 // the constructor of this baby captures 'errno' and the associated message

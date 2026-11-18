@@ -1,4 +1,4 @@
-# Obselete, was for experimenting with compilation.
+
 
 full() {
     cd /home/$USER/jive5ab/build/src && /usr/bin/c++ -DB2B=64 -DMARK5C=1 -DNOSSAPI -D_FILE_OFFSET_BITS=64 -D_POSIX_PTHREAD_SEMANTICS -D_REENTRANT -D__STDC_FORMAT_MACROS -I/home/$USER/jive5ab/src -I/home/$USER/jive5ab/src/nossapi -I/home/$USER/jive5ab -I/home/$USER/jive5ab/libudt5ab -Wno-long-long -Wno-unused-function -O2  -fPIE -pthread -Wall -W -Werror -Wextra -pedantic -Wcast-qual -Wwrite-strings -Wredundant-decls -Wfloat-equal -Wshadow -ansi -MD -MT src/CMakeFiles/jive5ab.dir/threadfns/udpsreader.cc.o -MF CMakeFiles/jive5ab.dir/threadfns/udpsreader.cc.o.d -o CMakeFiles/jive5ab.dir/threadfns/udpsreader.cc.o -c /home/$USER/jive5ab/src/threadfns/udpsreader.cc

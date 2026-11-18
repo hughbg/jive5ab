@@ -83,6 +83,7 @@ void udpsreader_bh(outq_type<block>* outq, sync_type< sync_type<runtime> >* args
     SYNCEXEC(args, rteptr = args->userdata;);
     EZASSERT2(rteptr, netreaderexception, EZINFO("runtime pointer argument was NULL"));
     RTEEXEC(*rteptr, rteptr->check_vdif_spec() && rteptr->nblock>0 && rteptr->ackPeriod>0 && rteptr->fd!=-1);  //stuff we need
+    RTEEXEC(*rteptr, rteptr->port>1024);
 
     // an (optionally compressed) block of <blocksize> is chopped up in
     // chunks of <read_size>, optionally compressed into <write_size> and
@@ -486,6 +487,7 @@ seqnr = (uint64_t)(*((uint32_t*)(((unsigned char*)iov[0].iov_base)+4)));
             oss << "::recvmsg(rteptr->fd, &msg, MSG_WAITALL) fails - [" << lse << "] (ask:" << waitallread << " got:" << r << ")";
             throw syscallexception(oss.str());
         }
+
 
         // Now that we've *really* read the pakkit we may update our
         // read statistics 

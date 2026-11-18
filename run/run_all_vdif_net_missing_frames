@@ -1,0 +1,18 @@
+#!/bin/sh
+
+NETWORKING=/home/$USER/networking
+JIVE=/home/$USER/jive5ab
+
+DISCARD="-x 5"
+#DISCARD=""
+
+gnome-terminal --title="jive5ab" --geometry 100x40+100+100 -- $JIVE/vdif_net/vdif_net
+
+sleep 2
+
+gnome-terminal --title="create vdif" --geometry 40x40+300+300 -- ./create_vdif_frames_missing -u 100 -d 2 127.0.0.1 22001  
+
+
+
+# look at spoof vdif output with scan_sfxc_gets reading vheader output
+

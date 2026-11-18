@@ -21,8 +21,6 @@
 
 // When using the chain code in a different project, remove this include
 // and the line below which reads: "push_error( ... )"
-//#include <errorqueue.h>
-//#include <threadutil.h>
 
 #include <unistd.h>
 #include <signal.h>
@@ -646,12 +644,10 @@ void* chain::run_step(void* runstepargsptr) {
     catch( const std::exception& e ) {
         cerr << "OH NOES! A step threw an exception:" << endl
              << "**** " << e.what() << endl;
-        //push_error( error_type(-1, string("[chain::run_step/step threw exception] ")+e.what()) );
     }
     catch( ... ) {
         cerr << "OH NOES! A step threw an unknown exception!" << endl;
-        //push_error( error_type(-1, "[chain::run_step/step threw exception] unknown exception") );
-    }
+  }
     // And now delayed-disable this ones' output queue.
     // And bluntly disable the input q.
     // The fact that WE are executing this code means that WE
